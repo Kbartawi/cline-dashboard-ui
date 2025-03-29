@@ -3,10 +3,10 @@
 import React, { useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { atomDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
-import { Code, Terminal, Layout, Copy, Check, RefreshCw } from "lucide-react";
+import { Code, Terminal, Layout, Copy, Check, RefreshCw, FileJson, AlertCircle, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type OutputType = "text" | "code" | "ui" | "log";
+type OutputType = "text" | "code" | "ui" | "log" | "json" | "error";
 
 interface AgentOutputProps {
   content: string;
@@ -41,6 +41,16 @@ export function AgentOutput({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
+  const formatJsonIfNeeded = (content: string, type: OutputType): string => {
+    if (type !== "json") return content;
+    try {
+      const parsedJson = JSON.parse(content);
+      return JSON.stringify(parsedJson, null, 2);
+    } catch (e) {
+      return content; // Return original content if not valid JSON
+    }
+  };
+
   const renderIcon = () => {
     switch (type) {
       case "code":
@@ -49,17 +59,25 @@ export function AgentOutput({
         return <Terminal className="h-4 w-4" />;
       case "ui":
         return <Layout className="h-4 w-4" />;
+      case "json":
+        return <FileJson className="h-4 w-4" />;
+      case "error":
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
       default:
-        return null;
+        return <FileText className="h-4 w-4" />;
     }
   };
 
   const renderContent = () => {
+    // Format JSON if needed
+    const formattedContent = formatJsonIfNeeded(content, type);
+
     switch (type) {
       case "code":
+      case "json":
         return (
           <SyntaxHighlighter
-            language={language}
+            language={type === "json" ? "json" : language}
             style={atomDark}
             customStyle={{
               margin: 0,
@@ -71,13 +89,13 @@ export function AgentOutput({
             wrapLines={true}
             showLineNumbers={true}
           >
-            {String(content)}
+            {String(formattedContent)}
           </SyntaxHighlighter>
         );
       case "log":
         return (
           <div className="font-mono text-sm p-4 bg-black/90 text-white/90 rounded-md overflow-auto">
-            {content.split("\n").map((line, i) => (
+            {formattedContent.split("\n").map((line, i) => (
               <div key={i} className="whitespace-pre-wrap">
                 {line}
               </div>
@@ -87,29 +105,45 @@ export function AgentOutput({
       case "ui":
         return (
           <div className="p-4 bg-background border rounded-md">
-            <div dangerouslySetInnerHTML={{ __html: content }} />
+            <div dangerouslySetInnerHTML={{ __html: formattedContent }} />
+          </div>
+        );
+      case "error":
+        return (
+          <div className="p-4 whitespace-pre-wrap text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/10 rounded-md">
+            {formattedContent}
           </div>
         );
       default:
         return (
           <div className="p-4 whitespace-pre-wrap text-foreground">
-            {content}
+            {formattedContent}
           </div>
         );
     }
   };
 
+  // Determine output border color based on type
+  const getBorderClass = () => {
+    if (type === "error") return "border-red-300";
+    return "border-border";
+  };
+
   return (
     <div className={cn(
-      "relative w-full rounded-lg border border-border bg-background font-sans text-sm",
+      "relative w-full rounded-lg border bg-background font-sans text-sm",
+      getBorderClass(),
       className
     )}>
       {showControls && (
-        <div className="flex justify-between items-center px-4 py-2 border-b border-border">
+        <div className={cn(
+          "flex justify-between items-center px-4 py-2 border-b",
+          type === "error" ? "border-red-300" : "border-border"
+        )}>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {renderIcon()}
             <span className="font-medium">
-              {type.charAt(0).toUpperCase() + type.slice(1)} Output
+              {type.charAt(0).toUpperCase() + type.slice(1)} {type === "error" ? "Message" : "Output"}
             </span>
             {showTimestamp && (
               <span className="text-xs text-muted-foreground ml-2">
