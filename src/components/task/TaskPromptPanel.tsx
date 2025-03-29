@@ -11,19 +11,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Send } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 
 interface TaskPromptPanelProps {
   onSubmit?: (prompt: string, agent: string) => void;
+  isLoading?: boolean;
 }
 
-const TaskPromptPanel = ({ onSubmit }: TaskPromptPanelProps) => {
+const TaskPromptPanel = ({ onSubmit, isLoading = false }: TaskPromptPanelProps) => {
   const [prompt, setPrompt] = React.useState("");
   const [selectedAgent, setSelectedAgent] = React.useState("");
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (prompt.trim() && selectedAgent) {
+    if (prompt.trim() && selectedAgent && !isLoading) {
       onSubmit?.(prompt, selectedAgent);
     }
   };
@@ -40,31 +41,43 @@ const TaskPromptPanel = ({ onSubmit }: TaskPromptPanelProps) => {
             className="min-h-[120px] resize-none border-border bg-background text-foreground placeholder:text-muted-foreground"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
+            disabled={isLoading}
           />
           
           <div className="flex items-center gap-4">
             <Select
               value={selectedAgent}
               onValueChange={setSelectedAgent}
+              disabled={isLoading}
             >
               <SelectTrigger className="w-[200px] border-border bg-background text-foreground">
                 <SelectValue placeholder="Select MCP agent" />
               </SelectTrigger>
               <SelectContent className="border-border bg-background text-foreground">
-                <SelectItem value="agent-1">GitHub</SelectItem>
-                <SelectItem value="agent-2">21st Magic</SelectItem>
-                <SelectItem value="agent-3">Perplexity</SelectItem>
-                <SelectItem value="agent-4">Supabase</SelectItem>
+                <SelectItem value="github-mcp">GitHub</SelectItem>
+                <SelectItem value="21st-magic">21st Magic</SelectItem>
+                <SelectItem value="perplexity">Perplexity</SelectItem>
+                <SelectItem value="supabase">Supabase</SelectItem>
+                <SelectItem value="planning">Planning</SelectItem>
               </SelectContent>
             </Select>
             
             <Button 
               type="submit" 
               className="ml-auto"
-              disabled={!prompt.trim() || !selectedAgent}
+              disabled={!prompt.trim() || !selectedAgent || isLoading}
             >
-              <Send className="mr-2 h-4 w-4" />
-              Send
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Send
+                </>
+              )}
             </Button>
           </div>
         </form>
