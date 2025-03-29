@@ -6,6 +6,8 @@ import { ClineNavbar } from "@/components/layout/ClineNavbar";
 import { TaskPromptPanel } from "@/components/task/TaskPromptPanel";
 import { AgentOutput } from "@/components/task/AgentOutput";
 import { Bot, Code, Database, Server, User } from "lucide-react";
+import { callMcpAgent } from "@/services/mcpService";
+import { MCPResponse, ResponseType } from "@/types/mcp";
 
 // Sample data
 const sampleAgents = [
@@ -53,47 +55,40 @@ const navbarAgents = [
   { id: "supabase", name: "Supabase", status: "offline" as const },
 ];
 
-const sampleResponse = {
-  text: "I've analyzed your request and found the following information about MCP agents in Cline:\n\nThe Model Context Protocol (MCP) enables communication between Cline and locally running MCP servers that provide additional tools and resources to extend capabilities.\n\nEach MCP agent specializes in different functionality, allowing for a more modular and extensible AI system.",
-  code: `// Connect to an MCP server
-const server = new MCPServer({
-  name: "github-mcp",
-  version: "1.0.0",
-  capabilities: {
-    tools: ["create_repository", "push_files"],
-    resources: ["repo://owner/name"]
-  }
-});
-
-// Use a tool provided by the server
-const result = await cline.useMcpTool({
-  server: "github-mcp",
-  tool: "create_repository",
-  args: {
-    name: "my-new-repo",
-    description: "Created via MCP",
-    private: true
-  }
-});
-
-console.log(\`Repository created: ${result.html_url}\`);`,
-  log: "INFO: Connecting to MCP server github-mcp\nDEBUG: Setting up transport layer\nINFO: Connection established\nDEBUG: Requesting available tools\nINFO: Found 12 available tools\nDEBUG: Authentication successful\nINFO: Ready to process requests",
-  ui: `<div class="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-  <div>
-    <h3 class="font-medium">Dashboard Overview</h3>
-    <p class="text-sm text-muted-foreground">Summary of MCP activity</p>
-  </div>
-  <div class="text-2xl font-bold">5</div>
-</div>`
-};
-
 export default function Home() {
-  const [selectedOutputType, setSelectedOutputType] = useState<"text" | "code" | "log" | "ui">("text");
+  const [isLoading, setIsLoading] = useState(false);
+  const [response, setResponse] = useState<MCPResponse | null>(null);
   
-  // Sample handlers
-  const handleTaskSubmit = (prompt: string, agent: string) => {
-    console.log(`Submitting task "${prompt}" to agent ${agent}`);
-    // In a real app, this would call an API
+  // Handle task submission to MCP agent
+  const handleTaskSubmit = async (prompt: string, agentId: string) => {
+    setIsLoading(true);
+    try {
+      // Call the appropriate MCP agent using the service
+      const result = await callMcpAgent(agentId, prompt);
+      
+      // Set the response with current timestamp
+      setResponse({
+        ...result,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      // Handle any errors
+      setResponse({
+        type: "error",
+        content: error instanceof Error ? error.message : "An unknown error occurred",
+        timestamp: new Date(),
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Function to get code language from metadata or default
+  const getLanguage = (): string => {
+    if (response?.type === "code" && response.metadata?.language) {
+      return response.metadata.language as string;
+    }
+    return "javascript"; // Default language
   };
 
   return (
@@ -109,48 +104,69 @@ export default function Home() {
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-4xl mx-auto space-y-8">
             {/* Task Input */}
-            <TaskPromptPanel onSubmit={handleTaskSubmit} />
+            <TaskPromptPanel onSubmit={handleTaskSubmit} isLoading={isLoading} />
             
-            {/* Output Type Selector */}
-            <div className="flex space-x-2">
-              <button 
-                className={`px-3 py-1 rounded ${selectedOutputType === 'text' ? 'bg-primary text-white' : 'bg-muted'}`}
-                onClick={() => setSelectedOutputType("text")}
-              >
-                Text
-              </button>
-              <button 
-                className={`px-3 py-1 rounded ${selectedOutputType === 'code' ? 'bg-primary text-white' : 'bg-muted'}`}
-                onClick={() => setSelectedOutputType("code")}
-              >
-                Code
-              </button>
-              <button 
-                className={`px-3 py-1 rounded ${selectedOutputType === 'log' ? 'bg-primary text-white' : 'bg-muted'}`}
-                onClick={() => setSelectedOutputType("log")}
-              >
-                Log
-              </button>
-              <button 
-                className={`px-3 py-1 rounded ${selectedOutputType === 'ui' ? 'bg-primary text-white' : 'bg-muted'}`}
-                onClick={() => setSelectedOutputType("ui")}
-              >
-                UI
-              </button>
-            </div>
-
             {/* Output Display */}
-            {selectedOutputType === "text" && (
-              <AgentOutput content={sampleResponse.text} type="text" />
-            )}
-            {selectedOutputType === "code" && (
-              <AgentOutput content={sampleResponse.code} type="code" language="javascript" />
-            )}
-            {selectedOutputType === "log" && (
-              <AgentOutput content={sampleResponse.log} type="log" />
-            )}
-            {selectedOutputType === "ui" && (
-              <AgentOutput content={sampleResponse.ui} type="ui" />
+            {isLoading ? (
+              <div className="flex items-center justify-center p-12 border rounded-lg border-border bg-background">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  <p className="text-sm text-muted-foreground">Processing request...</p>
+                </div>
+              </div>
+            ) : response ? (
+              <>
+                {/* Show different output types based on response */}
+                {response.type === "text" && (
+                  <AgentOutput 
+                    content={response.content} 
+                    type="text" 
+                    timestamp={response.timestamp} 
+                  />
+                )}
+                {response.type === "code" && (
+                  <AgentOutput 
+                    content={response.content} 
+                    type="code" 
+                    language={getLanguage()} 
+                    timestamp={response.timestamp} 
+                  />
+                )}
+                {response.type === "ui" && (
+                  <AgentOutput 
+                    content={response.content} 
+                    type="ui" 
+                    timestamp={response.timestamp} 
+                  />
+                )}
+                {response.type === "log" && (
+                  <AgentOutput 
+                    content={response.content} 
+                    type="log" 
+                    timestamp={response.timestamp} 
+                  />
+                )}
+                {response.type === "json" && (
+                  <AgentOutput 
+                    content={response.content} 
+                    type="code" 
+                    language="json" 
+                    timestamp={response.timestamp} 
+                  />
+                )}
+                {response.type === "error" && (
+                  <AgentOutput 
+                    content={response.content} 
+                    type="log" 
+                    timestamp={response.timestamp} 
+                    className="border-red-300 bg-red-50 dark:bg-red-950/10"
+                  />
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 border rounded-lg border-border bg-background text-muted-foreground">
+                <p>Select an MCP agent and submit a task to see the response here.</p>
+              </div>
             )}
           </div>
         </main>
